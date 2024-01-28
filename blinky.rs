@@ -14,7 +14,7 @@ extern crate rp2040_hal;
 
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
-use panic_halt as _;
+// use panic_halt as _;
 
 // Alias for our HAL crate
 use rp2040_hal as hal;
@@ -25,6 +25,8 @@ use hal::pac;
 
 // Some traits we need
 use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::InputPin;
+use embedded_hal::digital::v2::StatefulOutputPin;
 use rp2040_hal::clocks::Clock;
 
 /// The linker will place this boot block at the start of our program image. We
@@ -83,11 +85,21 @@ fn main() -> ! {
 
     // Configure GPIO25 as an output
     let mut led_pin = pins.gpio25.into_push_pull_output();
+
+    let gp16 = pins.gpio16.into_pull_up_input();
+    led_pin.set_high().unwrap();
+    delay.delay_ms(5000);
+    led_pin.set_low().unwrap();
     loop {
-        led_pin.set_high().unwrap();
-        delay.delay_ms(500);
-        led_pin.set_low().unwrap();
-        delay.delay_ms(500);
+        if gp16.is_low().unwrap() {
+            if led_pin.is_set_low().unwrap() {
+                led_pin.set_high().unwrap();
+            }
+        } else {
+            if led_pin.is_set_high().unwrap() {
+                led_pin.set_low().unwrap();
+            }
+        }
     }
 }
 
