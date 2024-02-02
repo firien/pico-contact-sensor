@@ -25,7 +25,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 sudo apt install openocd
 rustup target add thumbv6m-none-eabi
 cargo build --target thumbv6m-none-eabi
-openocd -f interface/raspberrypi-swd.cfg -f target/rp2040.cfg -c "program target/thumbv6m-none-eabi/debug/blinky verify reset exit"
+sudo openocd -f interface/raspberrypi-swd.cfg -f target/rp2040.cfg -c "program target/thumbv6m-none-eabi/debug/blinky verify reset exit"
 
 ```
 
@@ -50,3 +50,4 @@ Apache 2.0 License. That means you can choose either the MIT license
 or the Apache-2.0 license when you re-use this code. See MIT or APACHE2.0
 for more information on each specific license.
 
+https://github.com/japaric/enc28j60/pull/6/files
