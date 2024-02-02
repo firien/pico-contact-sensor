@@ -14,12 +14,35 @@ Use the 24V that is blasted out of EdgeRouter X SFP to power [Raspberry Pi Pico]
 cargo install elf2uf2-rs --locked   
 rustup target add thumbv6m-none-eabi
 
+# Linux PI
+
+Install Rust
+
+Build .elf for SWD
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+sudo apt install openocd
+rustup target add thumbv6m-none-eabi
+cargo build --target thumbv6m-none-eabi
+openocd -f interface/raspberrypi-swd.cfg -f target/rp2040.cfg -c "program target/thumbv6m-none-eabi/debug/blinky verify reset exit"
+
+```
+
+
 ## Parts & Documents
 * https://www.digikey.com/en/products/detail/bel-fuse-inc/0826-1L1T-57-F/2107996
 * https://www.digikey.com/en/products/detail/texas-instruments/UA78M05IDCYR/706596
 * https://www.digikey.com/en/products/detail/microchip-technology/enc28j60-i-sp/1680061
 * https://stackoverflow.com/questions/76382019/read-value-from-spi-on-raspberry-pi-pico-using-rust
 * https://www.digikey.com/en/products/detail/olimex-ltd/ENC28J60-H/3471433
+
+
+https://electronics.stackexchange.com/questions/594272/spi-rx-and-tx-alternative-names-for-miso-and-mosi
+
+MISO = SPI_RXD
+MOSI = SPI_TXD
+
 
 ## License
 The contents of this repository are dual-licensed under the MIT OR 
