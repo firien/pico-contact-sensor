@@ -14,7 +14,8 @@ embedded-hal = { version = "0.2.5", features = ["unproven"] }
 cortex-m = "0.7.2"
 cortex-m-rt = "0.7"
 rp2040-boot2 = "0.2.1"
-
+enc28j60 = { git = "https://github.com/sciguy16/enc28j60", branch = "smoltcp_sciguy16", features = ["smoltcp"] }
+smoltcp = { version= "0.10.0", default-features = false, features = ["proto-ipv4"] }
 
 [[bin]]
 name = "blinky"
