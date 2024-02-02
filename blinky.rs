@@ -11,6 +11,27 @@
 extern crate panic_halt;
 extern crate embedded_hal;
 extern crate rp2040_hal;
+extern crate enc28j60;
+extern crate smoltcp;
+extern crate cortex_m_rt;
+extern crate defmt;
+
+// ethernet
+// use defmt_rtt as _; // global logger
+// use panic_probe as _;
+
+use core::fmt::Write;
+use cortex_m_rt::entry;
+use defmt::info;
+use enc28j60::{smoltcp_phy::Phy, Enc28j60};
+use smoltcp::{
+    iface::{Config, Interface, SocketSet},
+    socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer},
+    time::Instant,
+    wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, Ipv4Address},
+};
+
+const SRC_MAC: [u8; 6] = [0x20, 0x18, 0x03, 0x01, 0x00, 0x00];
 
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
@@ -82,6 +103,8 @@ fn main() -> ! {
         sio.gpio_bank0,
         &mut pac.RESETS,
     );
+
+    // TODO init SPI
 
     // Configure GPIO25 as an output
     let mut led_pin = pins.gpio25.into_push_pull_output();
