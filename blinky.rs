@@ -86,12 +86,12 @@ fn main() -> ! {
     // Configure GPIO25 as an output
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
-    let gp16 = pins.gpio16.into_pull_up_input();
+    let gp11 = pins.gpio11.into_pull_up_input();
     led_pin.set_high().unwrap();
-    delay.delay_ms(5000);
+    delay.delay_ms(1000);
     led_pin.set_low().unwrap();
     loop {
-        if gp16.is_low().unwrap() {
+        if gp11.is_low().unwrap() {
             if led_pin.is_set_low().unwrap() {
                 led_pin.set_high().unwrap();
             }
