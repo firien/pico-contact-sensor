@@ -156,26 +156,18 @@ fn main() -> ! {
     let mut sockets_storage: [_; 2] = Default::default();
     let mut sockets = SocketSet::new(&mut sockets_storage[..]);
     let server_handle = sockets.add(server_socket);
-    
-    // Configure GPIO25 as an output
-    let mut led_pin = pins.gpio25.into_push_pull_output();
 
-    let gp11 = pins.gpio11.into_pull_up_input();
+    let contact1 = pins.gpio11.into_pull_up_input();
+
+    // Configure GPIO25 as an output
+    // flash led on boot
+    let mut led_pin = pins.gpio25.into_push_pull_output();
     led_pin.set_high().unwrap();
     delay.delay_ms(3000);
     led_pin.set_low().unwrap();
 
     let mut count: u64 = 0;
     loop {
-        if gp11.is_low().unwrap() {
-            if led_pin.is_set_low().unwrap() {
-                led_pin.set_high().unwrap();
-            }
-        } else {
-            if led_pin.is_set_high().unwrap() {
-                led_pin.set_low().unwrap();
-            }
-        }
         // server
         if iface.poll(Instant::from_millis(0), &mut eth, &mut sockets) {
             let socket = sockets.get_mut::<TcpSocket>(server_handle);
@@ -187,8 +179,11 @@ fn main() -> ! {
                 info!("tcp:80 send");
                 write!(
                             socket,
-                            "HTTP/1.1 200 OK\r\n\r\nHello!\nLED is currently off and has been toggled {} times.\n",
-                            count
+                            "HTTP/1.1 200 OK\r\n\r\nDoor is currently {}.\n",
+                            match contact1.is_low().unwrap() {
+                                true => "closed",
+                                false => "open",
+                            }
                         )
                         .unwrap();
 
