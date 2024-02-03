@@ -179,7 +179,7 @@ fn main() -> ! {
                 info!("tcp:80 send");
                 write!(
                             socket,
-                            "HTTP/1.1 200 OK\r\n\r\nDoor is currently {}.\n",
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\n\r\n{{ contact1: \"{}\" }}\n",
                             match contact1.is_low().unwrap() {
                                 true => "closed",
                                 false => "open",
