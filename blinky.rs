@@ -10,7 +10,29 @@
 #![no_main]
 extern crate panic_halt;
 extern crate embedded_hal;
+extern crate fugit;
 extern crate rp2040_hal;
+extern crate enc28j60;
+extern crate smoltcp;
+extern crate cortex_m_rt;
+extern crate defmt;
+
+// ethernet
+// use defmt_rtt as _; // global logger
+// use panic_probe as _;
+
+use core::fmt::Write;
+use cortex_m_rt::entry;
+use defmt::info;
+use enc28j60::{smoltcp_phy::Phy, Enc28j60};
+use smoltcp::{
+    iface::{Config, Interface, SocketSet},
+    socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer},
+    time::Instant,
+    wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, Ipv4Address},
+};
+
+const SRC_MAC: [u8; 6] = [0x20, 0x18, 0x03, 0x01, 0x00, 0x00];
 
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
@@ -24,8 +46,7 @@ use rp2040_hal as hal;
 use hal::pac;
 
 // Some traits we need
-use embedded_hal::digital::v2::OutputPin;
-use embedded_hal::digital::v2::InputPin;
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 use embedded_hal::digital::v2::StatefulOutputPin;
 use rp2040_hal::clocks::Clock;
 
@@ -83,23 +104,96 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    // Configure GPIO25 as an output
-    let mut led_pin = pins.gpio25.into_push_pull_output();
+    // TODO init SPI
+    use embedded_hal::spi::MODE_0;
+    use fugit::RateExtU32;
 
-    let gp16 = pins.gpio16.into_pull_up_input();
+    let _sck = pins.gpio18.into_mode::<hal::gpio::FunctionSpi>();
+    let _mosi = pins.gpio19.into_mode::<hal::gpio::FunctionSpi>();
+    let _miso = pins.gpio16.into_mode::<hal::gpio::FunctionSpi>();
+
+    let spi = hal::spi::Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, clocks.peripheral_clock.freq(), 1.MHz(), &MODE_0);
+
+    // ENC28J60
+    let enc28j60 = {
+        let mut spi_cs = pins.gpio17.into_push_pull_output();
+        let _ = spi_cs.set_high();
+
+        Enc28j60::new(
+            spi,
+            spi_cs,
+            enc28j60::Unconnected,
+            enc28j60::Unconnected,
+            &mut delay,
+            7168,
+            SRC_MAC,
+        )
+        .ok()
+        .unwrap()
+    };
+    
+    // PHY Wrapper
+    let mut rx_buf = [0u8; 1024];
+    let mut tx_buf = [0u8; 1024];
+    let mut eth = Phy::new(enc28j60, &mut rx_buf, &mut tx_buf);
+
+    // Ethernet interface
+    let local_addr = Ipv4Address::new(192, 0, 2, 10);
+    let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
+    let config = Config::new(HardwareAddress::Ethernet(EthernetAddress(SRC_MAC)));
+    let mut iface = Interface::new(config, &mut eth, Instant::from_micros(0));
+    iface.update_ip_addrs(|ip_addrs| {
+        ip_addrs.push(ip_addr).unwrap();
+    });
+
+    // Sockets
+    let mut server_rx_buffer = [0; 2048];
+    let mut server_tx_buffer = [0; 2048];
+    let server_socket = TcpSocket::new(
+        TcpSocketBuffer::new(&mut server_rx_buffer[..]),
+        TcpSocketBuffer::new(&mut server_tx_buffer[..]),
+    );
+    let mut sockets_storage: [_; 2] = Default::default();
+    let mut sockets = SocketSet::new(&mut sockets_storage[..]);
+    let server_handle = sockets.add(server_socket);
+
+    let contact1 = pins.gpio11.into_pull_up_input();
+
+    // Configure GPIO25 as an output
+    // flash led on boot
+    let mut led_pin = pins.gpio25.into_push_pull_output();
     led_pin.set_high().unwrap();
-    delay.delay_ms(5000);
+    delay.delay_ms(3000);
     led_pin.set_low().unwrap();
+
+    let mut count: u64 = 0;
     loop {
-        if gp16.is_low().unwrap() {
-            if led_pin.is_set_low().unwrap() {
-                led_pin.set_high().unwrap();
+        // server
+        if iface.poll(Instant::from_millis(0), &mut eth, &mut sockets) {
+            let socket = sockets.get_mut::<TcpSocket>(server_handle);
+            if !socket.is_open() {
+                socket.listen(80).unwrap();
             }
-        } else {
-            if led_pin.is_set_high().unwrap() {
-                led_pin.set_low().unwrap();
+
+            if socket.can_send() {
+                info!("tcp:80 send");
+                write!(
+                            socket,
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\n\r\n{{ contact1: \"{}\" }}\n",
+                            match contact1.is_low().unwrap() {
+                                true => "closed",
+                                false => "open",
+                            }
+                        )
+                        .unwrap();
+
+                info!("tcp:80 close");
+                socket.close();
+
+                count += 1;
             }
         }
+
     }
 }
 
