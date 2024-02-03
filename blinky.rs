@@ -132,6 +132,31 @@ fn main() -> ! {
         .unwrap()
     };
     
+    // PHY Wrapper
+    let mut rx_buf = [0u8; 1024];
+    let mut tx_buf = [0u8; 1024];
+    let mut eth = Phy::new(enc28j60, &mut rx_buf, &mut tx_buf);
+
+    // Ethernet interface
+    let local_addr = Ipv4Address::new(192, 0, 2, 10);
+    let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
+    let config = Config::new(HardwareAddress::Ethernet(EthernetAddress(SRC_MAC)));
+    let mut iface = Interface::new(config, &mut eth, Instant::from_micros(0));
+    iface.update_ip_addrs(|ip_addrs| {
+        ip_addrs.push(ip_addr).unwrap();
+    });
+
+    // Sockets
+    let mut server_rx_buffer = [0; 2048];
+    let mut server_tx_buffer = [0; 2048];
+    let server_socket = TcpSocket::new(
+        TcpSocketBuffer::new(&mut server_rx_buffer[..]),
+        TcpSocketBuffer::new(&mut server_tx_buffer[..]),
+    );
+    let mut sockets_storage: [_; 2] = Default::default();
+    let mut sockets = SocketSet::new(&mut sockets_storage[..]);
+    let server_handle = sockets.add(server_socket);
+    
     // Configure GPIO25 as an output
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
@@ -139,6 +164,8 @@ fn main() -> ! {
     led_pin.set_high().unwrap();
     delay.delay_ms(3000);
     led_pin.set_low().unwrap();
+
+    let mut count: u64 = 0;
     loop {
         if gp11.is_low().unwrap() {
             if led_pin.is_set_low().unwrap() {
@@ -149,6 +176,29 @@ fn main() -> ! {
                 led_pin.set_low().unwrap();
             }
         }
+        // server
+        if iface.poll(Instant::from_millis(0), &mut eth, &mut sockets) {
+            let socket = sockets.get_mut::<TcpSocket>(server_handle);
+            if !socket.is_open() {
+                socket.listen(80).unwrap();
+            }
+
+            if socket.can_send() {
+                info!("tcp:80 send");
+                write!(
+                            socket,
+                            "HTTP/1.1 200 OK\r\n\r\nHello!\nLED is currently off and has been toggled {} times.\n",
+                            count
+                        )
+                        .unwrap();
+
+                info!("tcp:80 close");
+                socket.close();
+
+                count += 1;
+            }
+        }
+
     }
 }
 
