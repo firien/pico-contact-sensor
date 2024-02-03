@@ -114,6 +114,24 @@ fn main() -> ! {
 
     let spi = hal::spi::Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, clocks.peripheral_clock.freq(), 1.MHz(), &MODE_0);
 
+    // ENC28J60
+    let enc28j60 = {
+        let mut spi_cs = pins.gpio17.into_push_pull_output();
+        let _ = spi_cs.set_high();
+
+        Enc28j60::new(
+            spi,
+            spi_cs,
+            enc28j60::Unconnected,
+            enc28j60::Unconnected,
+            &mut delay,
+            7168,
+            SRC_MAC,
+        )
+        .ok()
+        .unwrap()
+    };
+    
     // Configure GPIO25 as an output
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
