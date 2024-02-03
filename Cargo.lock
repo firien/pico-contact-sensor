@@ -550,6 +550,7 @@ dependencies = [
  "defmt-rtt",
  "embedded-hal",
  "enc28j60",
+ "fugit",
  "panic-halt",
  "rp2040-boot2",
  "rp2040-hal",

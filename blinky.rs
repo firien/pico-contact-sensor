@@ -10,6 +10,7 @@
 #![no_main]
 extern crate panic_halt;
 extern crate embedded_hal;
+extern crate fugit;
 extern crate rp2040_hal;
 extern crate enc28j60;
 extern crate smoltcp;
@@ -45,8 +46,7 @@ use rp2040_hal as hal;
 use hal::pac;
 
 // Some traits we need
-use embedded_hal::digital::v2::OutputPin;
-use embedded_hal::digital::v2::InputPin;
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 use embedded_hal::digital::v2::StatefulOutputPin;
 use rp2040_hal::clocks::Clock;
 
@@ -105,13 +105,21 @@ fn main() -> ! {
     );
 
     // TODO init SPI
+    use embedded_hal::spi::MODE_0;
+    use fugit::RateExtU32;
+
+    let _sck = pins.gpio18.into_mode::<hal::gpio::FunctionSpi>();
+    let _mosi = pins.gpio19.into_mode::<hal::gpio::FunctionSpi>();
+    let _miso = pins.gpio16.into_mode::<hal::gpio::FunctionSpi>();
+
+    let spi = hal::spi::Spi::<_, _, 8>::new(pac.SPI0).init(&mut pac.RESETS, clocks.peripheral_clock.freq(), 1.MHz(), &MODE_0);
 
     // Configure GPIO25 as an output
     let mut led_pin = pins.gpio25.into_push_pull_output();
 
     let gp11 = pins.gpio11.into_pull_up_input();
     led_pin.set_high().unwrap();
-    delay.delay_ms(1000);
+    delay.delay_ms(3000);
     led_pin.set_low().unwrap();
     loop {
         if gp11.is_low().unwrap() {

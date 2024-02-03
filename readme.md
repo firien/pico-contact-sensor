@@ -51,3 +51,4 @@ or the Apache-2.0 license when you re-use this code. See MIT or APACHE2.0
 for more information on each specific license.
 
 https://github.com/japaric/enc28j60/pull/6/files
+https://www.reddit.com/r/rust/comments/ugbuvz/anyone_have_a_working_example_of_spi_on_raspberry/
