@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+   {
+      "name": "Pico Debug",
+      "cwd": "${workspaceRoot}",
+      "executable": "target/thumbv6m-none-eabi/debug/blinky",
+      "request": "launch",
+      "type": "cortex-debug",
+      "servertype": "openocd",
+      "gdbPath": "gdb-multiarch",
+      "device": "RP2040",
+      "configFiles": [
+        "interface/raspberrypi-swd.cfg",
+        "target/rp2040.cfg"
+      ],
+      "runToEntryPoint": "main",
+      // Work around for stopping at main on restart
+      "postRestartCommands": [
+        "break main",
+        "continue"
+      ]
+   }
+  ]
+}
