@@ -22,24 +22,26 @@ extern crate defmt;
 // use panic_probe as _;
 
 use core::fmt::Write;
-use cortex_m_rt::entry;
 // use defmt::info;
 use enc28j60::{smoltcp_phy::Phy, Enc28j60};
 use smoltcp::{
     iface::{Config, Interface, SocketSet},
     socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer},
-    time::Instant,
-    wire::{EthernetAddress, HardwareAddress, IpAddress, IpCidr, Ipv4Address},
+    socket::dhcpv4,
+    socket::dhcpv4::RetryConfig,
+    time::{Instant, Duration},
+    wire::{EthernetAddress, HardwareAddress, IpCidr, Ipv4Address, Ipv4Cidr, DhcpOption},
 };
 
-const SRC_MAC: [u8; 6] = [0x20, 0x18, 0x03, 0x01, 0x00, 0x00];
+const SRC_MAC: [u8; 6] = [0x20, 0x18, 0x03, 0x02, 0x00, 0x00];
+const HOST_NAME: &[u8] = b"rustypico";
 
 // Ensure we halt the program on panic (if we don't mention this crate it won't
 // be linked)
 // use panic_halt as _;
 
 // Alias for our HAL crate
-use rp2040_hal as hal;
+use rp2040_hal::{self as hal, uart};
 
 // A shorter alias for the Peripheral Access Crate, which provides low-level
 // register access
@@ -117,8 +119,6 @@ fn main() -> ! {
         clocks.peripheral_clock.freq(),
     ).unwrap();
 
-    uart.write_fmt(format_args!("spent {} seconds", "asdfl")).unwrap();
-
     // Configure GPIO25 as an output
     // flash led on boot
     let mut led_pin = pins.gpio25.into_push_pull_output();
@@ -158,12 +158,17 @@ fn main() -> ! {
     let mut eth = Phy::new(enc28j60, &mut rx_buf, &mut tx_buf);
 
     // Ethernet interface
-    let local_addr = Ipv4Address::new(192, 0, 2, 10);
-    let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
-    let config = Config::new(HardwareAddress::Ethernet(EthernetAddress(SRC_MAC)));
+    let ring_oscillator = hal::rosc::RingOscillator::new(pac.ROSC).initialize();
+    let mut config = Config::new(HardwareAddress::Ethernet(EthernetAddress(SRC_MAC)));
+    config.random_seed = generate_random_seed(&ring_oscillator);
+    uart.write_fmt(format_args!("random seed:      {}\n", config.random_seed)).unwrap();
+
     let mut iface = Interface::new(config, &mut eth, Instant::from_micros(0));
+
     iface.update_ip_addrs(|ip_addrs| {
-        ip_addrs.push(ip_addr).unwrap();
+        ip_addrs
+            .push(Ipv4Cidr::new(Ipv4Address::UNSPECIFIED, 0).into())
+            .unwrap();
     });
 
     // Sockets
@@ -173,40 +178,98 @@ fn main() -> ! {
         TcpSocketBuffer::new(&mut server_rx_buffer[..]),
         TcpSocketBuffer::new(&mut server_tx_buffer[..]),
     );
-    let mut sockets_storage: [_; 2] = Default::default();
+
+    // Create sockets
+    let mut dhcp_socket = dhcpv4::Socket::new();
+    dhcp_socket.set_retry_config(RetryConfig {
+        discover_timeout: Duration::from_secs(10),
+        ..RetryConfig::default()
+    });
+    // register hostname with dhcp
+    dhcp_socket.set_outgoing_options(&[DhcpOption {
+        kind: 12, // Host Name
+        data: HOST_NAME,
+    }]);
+
+
+    let mut sockets_storage: [_; 3] = Default::default();
     let mut sockets = SocketSet::new(&mut sockets_storage[..]);
     let server_handle = sockets.add(server_socket);
+    let dhcp_handle = sockets.add(dhcp_socket);
 
     let contact1 = pins.gpio11.into_pull_up_input();
 
     // turn off led
     led_pin.set_low().unwrap();
     loop {
+        let timestamp = Instant::from_millis(0);
         // server
-        if iface.poll(Instant::from_millis(0), &mut eth, &mut sockets) {
-            let socket = sockets.get_mut::<TcpSocket>(server_handle);
-            if !socket.is_open() {
-                socket.listen(80).unwrap();
-            }
+        if iface.poll(timestamp, &mut eth, &mut sockets) {
+            // let socket = sockets.get_mut::<TcpSocket>(server_handle);
+            // if !socket.is_open() {
+            //     socket.listen(80).unwrap();
+            // }
 
-            if socket.can_send() {
-                uart.write_str("tcp:80 send").unwrap();
+            // if socket.can_send() {
+            //     uart.write_str("tcp:80 send").unwrap();
 
-                write!(
-                            socket,
-                            "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\n\r\n{{ contact1: \"{}\" }}\n",
-                            match contact1.is_low().unwrap() {
-                                true => "closed",
-                                false => "open",
-                            }
-                        )
-                        .unwrap();
-                uart.write_str("tcp:80 close").unwrap();
-                socket.close();
+            //     write!(
+            //                 socket,
+            //                 "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\n\r\n{{ contact1: \"{}\" }}\n",
+            //                 match contact1.is_low().unwrap() {
+            //                     true => "closed",
+            //                     false => "open",
+            //                 }
+            //             )
+            //             .unwrap();
+            //     uart.write_str("tcp:80 close").unwrap();
+            //     socket.close();
+            // }
+            let dhcp_socket = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle);
+            let event = dhcp_socket.poll();
+            match event {
+                None => {}
+                Some(dhcpv4::Event::Configured(config)) => {
+                    uart.write_str("DHCP config acquired!").unwrap();
+        
+                    uart.write_fmt(format_args!("IP address:      {}\n", config.address)).unwrap();
+                    set_ipv4_addr(&mut iface, config.address);
+        
+                    if let Some(router) = config.router {
+                        uart.write_fmt(format_args!("Default gateway: {}\n", router)).unwrap();
+                        iface.routes_mut().add_default_ipv4_route(router).unwrap();
+                    } else {
+                        uart.write_str("Default gateway: None").unwrap();
+                        iface.routes_mut().remove_default_ipv4_route();
+                    }
+        
+                    for (i, s) in config.dns_servers.iter().enumerate() {
+                        uart.write_fmt(format_args!("DNS server {}:    {}", i, s)).unwrap();
+                    }
+                }
+                Some(dhcpv4::Event::Deconfigured) => {
+                    uart.write_str("DHCP lost config!").unwrap();
+                    set_ipv4_addr(&mut iface, Ipv4Cidr::new(Ipv4Address::UNSPECIFIED, 0));
+                    iface.routes_mut().remove_default_ipv4_route();
+                }
             }
         }
-
     }
+}
+
+fn set_ipv4_addr(iface: &mut Interface, cidr: Ipv4Cidr) {
+    iface.update_ip_addrs(|addrs| {
+        let dest = addrs.iter_mut().next().unwrap();
+        *dest = IpCidr::Ipv4(cidr);
+    });
+}
+
+fn generate_random_seed(ring_oscillator: &hal::rosc::RingOscillator<hal::rosc::Enabled>) -> u64 {
+    let mut seed = 0u64;
+    for i in 0..64 {
+        seed += u64::from(ring_oscillator.get_random_bit()) << i;
+    }
+    seed
 }
 
 // End of file
