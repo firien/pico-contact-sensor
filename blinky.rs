@@ -104,6 +104,11 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
+    // Configure GPIO25 as an output
+    // flash led on boot
+    let mut led_pin = pins.gpio25.into_push_pull_output();
+    led_pin.set_high().unwrap();
+
     // TODO init SPI
     use embedded_hal::spi::MODE_0;
     use fugit::RateExtU32;
@@ -159,11 +164,7 @@ fn main() -> ! {
 
     let contact1 = pins.gpio11.into_pull_up_input();
 
-    // Configure GPIO25 as an output
-    // flash led on boot
-    let mut led_pin = pins.gpio25.into_push_pull_output();
-    led_pin.set_high().unwrap();
-    delay.delay_ms(3000);
+    // turn off led
     led_pin.set_low().unwrap();
     loop {
         // server
