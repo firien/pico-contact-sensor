@@ -23,7 +23,7 @@ extern crate defmt;
 
 use core::fmt::Write;
 use cortex_m_rt::entry;
-use defmt::info;
+// use defmt::info;
 use enc28j60::{smoltcp_phy::Phy, Enc28j60};
 use smoltcp::{
     iface::{Config, Interface, SocketSet},
@@ -104,6 +104,26 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
+
+    // Set up UART on GP0 and GP1 (Pico pins 1 and 2)
+    let uart_pins = (
+        pins.gpio0.into_mode::<hal::gpio::FunctionUart>(),
+        pins.gpio1.into_mode::<hal::gpio::FunctionUart>(),
+    );
+    // Need to perform clock init before using UART or it will freeze.
+    let mut uart = hal::uart::UartPeripheral::new(pac.UART0, uart_pins, &mut pac.RESETS)
+    .enable(
+        hal::uart::UartConfig::new(9600.Hz(), hal::uart::DataBits::Eight, None, hal::uart::StopBits::One),
+        clocks.peripheral_clock.freq(),
+    ).unwrap();
+
+    uart.write_fmt(format_args!("spent {} seconds", "asdfl")).unwrap();
+
+    // Configure GPIO25 as an output
+    // flash led on boot
+    let mut led_pin = pins.gpio25.into_push_pull_output();
+    led_pin.set_high().unwrap();
+
     // TODO init SPI
     use embedded_hal::spi::MODE_0;
     use fugit::RateExtU32;
@@ -159,14 +179,8 @@ fn main() -> ! {
 
     let contact1 = pins.gpio11.into_pull_up_input();
 
-    // Configure GPIO25 as an output
-    // flash led on boot
-    let mut led_pin = pins.gpio25.into_push_pull_output();
-    led_pin.set_high().unwrap();
-    delay.delay_ms(3000);
+    // turn off led
     led_pin.set_low().unwrap();
-
-    let mut count: u64 = 0;
     loop {
         // server
         if iface.poll(Instant::from_millis(0), &mut eth, &mut sockets) {
@@ -176,7 +190,8 @@ fn main() -> ! {
             }
 
             if socket.can_send() {
-                info!("tcp:80 send");
+                uart.write_str("tcp:80 send").unwrap();
+
                 write!(
                             socket,
                             "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\n\r\n{{ contact1: \"{}\" }}\n",
@@ -186,11 +201,8 @@ fn main() -> ! {
                             }
                         )
                         .unwrap();
-
-                info!("tcp:80 close");
+                uart.write_str("tcp:80 close").unwrap();
                 socket.close();
-
-                count += 1;
             }
         }
 
