@@ -165,8 +165,6 @@ fn main() -> ! {
     led_pin.set_high().unwrap();
     delay.delay_ms(3000);
     led_pin.set_low().unwrap();
-
-    let mut count: u64 = 0;
     loop {
         // server
         if iface.poll(Instant::from_millis(0), &mut eth, &mut sockets) {
@@ -189,8 +187,6 @@ fn main() -> ! {
 
                 info!("tcp:80 close");
                 socket.close();
-
-                count += 1;
             }
         }
 
