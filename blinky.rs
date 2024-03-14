@@ -138,7 +138,7 @@ fn main() -> ! {
     let mut eth = Phy::new(enc28j60, &mut rx_buf, &mut tx_buf);
 
     // Ethernet interface
-    let local_addr = Ipv4Address::new(192, 0, 2, 10);
+    let local_addr = Ipv4Address::new(172, 22, 16, 100);
     let ip_addr = IpCidr::new(IpAddress::from(local_addr), 24);
     let config = Config::new(HardwareAddress::Ethernet(EthernetAddress(SRC_MAC)));
     let mut iface = Interface::new(config, &mut eth, Instant::from_micros(0));
@@ -157,7 +157,9 @@ fn main() -> ! {
     let mut sockets = SocketSet::new(&mut sockets_storage[..]);
     let server_handle = sockets.add(server_socket);
 
-    let contact1 = pins.gpio11.into_pull_up_input();
+    let contact1 = pins.gpio13.into_pull_up_input();
+    let contact2 = pins.gpio14.into_pull_up_input();
+    let contact3 = pins.gpio15.into_pull_up_input();
 
     // Configure GPIO25 as an output
     // flash led on boot
@@ -166,7 +168,6 @@ fn main() -> ! {
     delay.delay_ms(3000);
     led_pin.set_low().unwrap();
 
-    let mut count: u64 = 0;
     loop {
         // server
         if iface.poll(Instant::from_millis(0), &mut eth, &mut sockets) {
@@ -179,8 +180,16 @@ fn main() -> ! {
                 info!("tcp:80 send");
                 write!(
                             socket,
-                            "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\n\r\n{{ contact1: \"{}\" }}\n",
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\n\r\n{{ contact1: \"{}\", contact2: \"{}\", contact3: \"{}\" }}\n",
                             match contact1.is_low().unwrap() {
+                                true => "closed",
+                                false => "open",
+                            },
+                            match contact2.is_low().unwrap() {
+                                true => "closed",
+                                false => "open",
+                            },
+                            match contact3.is_low().unwrap() {
                                 true => "closed",
                                 false => "open",
                             }
@@ -189,8 +198,6 @@ fn main() -> ! {
 
                 info!("tcp:80 close");
                 socket.close();
-
-                count += 1;
             }
         }
 
